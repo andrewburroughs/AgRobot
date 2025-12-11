@@ -4,13 +4,6 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='keyboard',
-            executable='keyboard_node',
-            name='keyboard_node',
-            output='screen'
-        )
-        ,
-        Node(
             package='talon',
             name='Talon1',
             executable='talon_node',
