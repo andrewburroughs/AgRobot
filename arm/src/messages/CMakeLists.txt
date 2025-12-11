@@ -38,19 +38,8 @@ include_directories(
 	)
 
 rosidl_generate_interfaces(messages
-  "msg/AxisState.msg"  
-  "msg/Camera.msg"
-  "msg/JoystickCommand.msg"
-  "msg/Power.msg"
-  "msg/ButtonState.msg"
-  "msg/HatState.msg"
   "msg/KeyState.msg"
   "msg/TalonStatus.msg"
-  "msg/ZedPosition.msg"
-  "msg/LinearStatus.msg"
-  "msg/AutonomyStatus.msg"
-  "msg/FalconStatus.msg"
-  "msg/SystemStatus.msg"
 
   DEPENDENCIES builtin_interfaces
 )
