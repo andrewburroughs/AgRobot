@@ -88,6 +88,7 @@ bool usePosition = false;
 
 TalonSRX* talonSRX;
 bool TEMP_DISABLE = false;
+bool GO = true;
 
 /** @brief Speed Callback Function
  * 
@@ -165,7 +166,7 @@ int main(int argc,char** argv){
 	talonSRX->ConfigAllowableClosedloopError(kPIDLoopIdx,0,kTimeoutMs);
 
 	talonSRX->Set(ControlMode::PercentOutput, 0.0);
-	//talonSRX->SetFeedbackDevice(FeedbackDevice.AnalogPotentiometer);
+	talonSRX->ConfigSelectedFeedbackSensor(FeedbackDevice::QuadEncoder);
 	talonSRX->SetStatusFramePeriod(StatusFrame::Status_2_Feedback0_, 10, 10);
 
 	RCLCPP_INFO(nodeHandle->get_logger(),"configured talon");
@@ -205,6 +206,7 @@ int main(int argc,char** argv){
 			int closedLoopError0=talonSRX->GetClosedLoopError(0);
 			double integralAccumulator0=talonSRX->GetIntegralAccumulator(0);
 			double errorDerivative0=talonSRX->GetErrorDerivative(0);
+			RCLCPP_INFO(nodeHandle->get_logger(),"Sensor Position: %d", sensorPosition0);
 		
 			talonStatus.device_id=deviceID;	
 			talonStatus.bus_voltage=busVoltage;

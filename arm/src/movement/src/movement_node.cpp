@@ -16,21 +16,23 @@
 #include <messages/msg/key_state.hpp>
 
 rclcpp::Node::SharedPtr nodeHandle;
-std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32<std::allocator<void> >, std::allocator<void> > > talon1SpeeedPublisher;
-std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32<std::allocator<void> >, std::allocator<void> > > talon2SpeeedPublisher;
+std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon1SpeedPublisher;
+std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon2SpeedPublisher;
 
 
 void talon1SpeedCallback(const std_msgs::msg::Float32::SharedPtr speed){
+    std_msgs::msg::Float32 outSpeed;
+    outSpeed.data = speed->data;
     RCLCPP_INFO(nodeHandle->get_logger(),"---------->>> %f ", speed->data);
-    talon1SpeeedPublisher->publish(speed);
+    talon1SpeedPublisher->publish(outSpeed);
 }
 
 void talon2SpeedCallback(const std_msgs::msg::Float32::SharedPtr speed){
+    std_msgs::msg::Float32 outSpeed;
+    outSpeed.data = speed->data;
     RCLCPP_INFO(nodeHandle->get_logger(),"---------->>> %f ", speed->data);
-    talon2SpeeedPublisher->publish(speed);
+    talon2SpeedPublisher->publish(outSpeed);
 }
-
-void 
 
 int main(int argc,char** argv){
 	rclcpp::init(argc,argv);
@@ -38,8 +40,8 @@ int main(int argc,char** argv){
 
 	RCLCPP_INFO(nodeHandle->get_logger(),"Starting movement");
 
-    talon1SpeeedPublisher=nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_1_speed",1);
-    talon2SpeeedPublisher=nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_2_speed",1);
+    talon1SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_1_speed",1);
+    talon2SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_2_speed",1);
 
     auto linear1SpeedSuscriber = nodeHandle->create_subscription<std_msgs::msg::Float32>("linear_1_speed",1,talon1SpeedCallback);
     auto linear2SpeedSuscriber = nodeHandle->create_subscription<std_msgs::msg::Float32>("linear_2_speed",1,talon2SpeedCallback);
