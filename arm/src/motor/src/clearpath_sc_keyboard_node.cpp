@@ -3,34 +3,42 @@
 
 #include <vector>
 #include <mutex>
+#include <cmath>
 
 #include "pubSysCls.h"
 
 using namespace sFnd;
 
+// Same helper you used
 static bool IsBusPowerLow(INode &node) {
   return node.Status.Power.Value().fld.InBusLoss;
 }
 
-class ClearPathKeyboardNode : public rclcpp::Node {
+class ClearPathJogNode : public rclcpp::Node {
 public:
-  ClearPathKeyboardNode()
-  : Node("clearpath_sc_keyboard_node") {
-
+  ClearPathJogNode()
+  : Node("clearpath_sc_jog_node")
+  {
     init_teknic();
     enable_node();
 
-    // HARD-CODED TOPIC NAME
+    // HARD-CODED TOPIC NAME (as requested)
     sub_ = create_subscription<std_msgs::msg::Float32>(
       "motor_speed", 10,
-      std::bind(&ClearPathKeyboardNode::speed_callback, this, std::placeholders::_1)
+      std::bind(&ClearPathJogNode::speed_callback, this, std::placeholders::_1)
+    );
+
+    // Timer drives the “segmented jog”
+    timer_ = create_wall_timer(
+      std::chrono::milliseconds(TICK_MS),
+      std::bind(&ClearPathJogNode::tick, this)
     );
 
     RCLCPP_INFO(get_logger(),
-      "ClearPath keyboard node ready. Subscribed to [motor_speed]");
+      "Ready. Subscribed to [motor_speed]. >0 forward, <0 reverse, 0 soft-stop.");
   }
 
-  ~ClearPathKeyboardNode() override {
+  ~ClearPathJogNode() override {
     shutdown_teknic();
   }
 
@@ -42,13 +50,22 @@ private:
 
   // ---------- ROS ----------
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_;
+  rclcpp::TimerBase::SharedPtr timer_;
 
-  // ---------- Motion constants ----------
-  static constexpr double SPEED_RPM = 2.0;          // slow speed
-  static constexpr double ACCEL_RPM_PER_SEC = 100.0;
+  // ---------- Constants (edit here) ----------
   static constexpr size_t NODE_INDEX = 0;
 
-  double last_cmd_{0.0};
+  static constexpr double ACCEL_RPM_PER_SEC = 50.0; // gentler accel than your example
+  static constexpr double VEL_LIM_RPM       = 2.0;  // “slow turn”
+  static constexpr int    JOG_STEP_CNTS     = 10;   // small step each segment (tune!)
+  static constexpr int    ENABLE_TIMEOUT_MS = 10000;
+
+  static constexpr int    TICK_MS           = 10;   // how often we try to queue next segment
+  static constexpr double DEADZONE          = 0.05; // ignore tiny noise
+
+  // ---------- State ----------
+  double cmd_{0.0};          // last commanded motor_speed (-1..1 from keyboard)
+  bool   move_in_flight_{false};
 
 private:
   void init_teknic() {
@@ -56,7 +73,6 @@ private:
 
     std::vector<std::string> ports;
     SysManager::FindComHubPorts(ports);
-
     if (ports.empty()) {
       throw std::runtime_error("No SC hubs found");
     }
@@ -65,16 +81,18 @@ private:
     mgr_->PortsOpen(1);
 
     IPort &port = mgr_->Ports(0);
-
     if (NODE_INDEX >= port.NodeCount()) {
-      throw std::runtime_error("NODE_INDEX out of range");
+      throw std::runtime_error("NODE_INDEX out of range for discovered hub");
     }
 
     node_ = &port.Nodes(NODE_INDEX);
 
     RCLCPP_INFO(get_logger(),
-      "Connected to ClearPath node: %s",
-      node_->Info.Model.Value());
+      "Connected: userID=%s model=%s serial=%d fw=%s",
+      node_->Info.UserID.Value(),
+      node_->Info.Model.Value(),
+      node_->Info.SerialNumber.Value(),
+      node_->Info.FirmwareVersion.Value());
   }
 
   void enable_node() {
@@ -87,73 +105,103 @@ private:
     node_->Motion.NodeStopClear();
     node_->EnableReq(true);
 
-    double timeout = mgr_->TimeStampMsec() + 10000;
+    double timeout = mgr_->TimeStampMsec() + ENABLE_TIMEOUT_MS;
     while (!node_->Motion.IsReady()) {
       if (mgr_->TimeStampMsec() > timeout) {
         if (IsBusPowerLow(*node_)) {
-          throw std::runtime_error("Bus power low");
+          throw std::runtime_error("Bus power low (InBusLoss=1). Turn on supply.");
         }
-        throw std::runtime_error("Enable timeout");
+        throw std::runtime_error("Timed out enabling node");
       }
     }
 
     node_->AccUnit(INode::RPM_PER_SEC);
     node_->VelUnit(INode::RPM);
     node_->Motion.AccLimit = ACCEL_RPM_PER_SEC;
-    node_->Motion.VelLimit = SPEED_RPM;
+    node_->Motion.VelLimit = VEL_LIM_RPM;
 
-    RCLCPP_INFO(get_logger(), "ClearPath node enabled");
+    RCLCPP_INFO(get_logger(), "Node enabled; AccLimit=%.1f RPM/s, VelLimit=%.1f RPM",
+                ACCEL_RPM_PER_SEC, VEL_LIM_RPM);
   }
 
   void speed_callback(const std_msgs::msg::Float32::SharedPtr msg) {
     std::lock_guard<std::mutex> lk(mtx_);
+    cmd_ = msg->data; // store; tick() will act on it
+  }
 
-    const double cmd = msg->data;
-    if (cmd == last_cmd_) return;
-    last_cmd_ = cmd;
+  void tick() {
+    std::lock_guard<std::mutex> lk(mtx_);
+    if (!node_) return;
 
-    if (cmd == 0.0) {
-      node_->Motion.MoveVelStop();
-      RCLCPP_INFO(get_logger(), "Motor STOP");
+    if (IsBusPowerLow(*node_)) {
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                            "Bus power low (InBusLoss=1). Not issuing moves.");
       return;
     }
 
-    const double rpm = (cmd > 0.0) ? SPEED_RPM : -SPEED_RPM;
-    node_->Motion.MoveVelStart(rpm);
+    // Update move_in_flight_ based on MoveIsDone()
+    if (move_in_flight_) {
+      if (node_->Motion.MoveIsDone()) {
+        move_in_flight_ = false;
+      } else {
+        // still moving; don't queue another segment
+        return;
+      }
+    }
 
-    RCLCPP_INFO(get_logger(),
-      "Motor RUN %.2f RPM", rpm);
+    // Decide whether we should start another jog segment
+    if (std::fabs(cmd_) < DEADZONE) {
+      // Soft stop: don't start new segments
+      return;
+    }
+
+    // Direction based on sign
+    const int dir = (cmd_ > 0.0) ? +1 : -1;
+    const int delta_counts = dir * JOG_STEP_CNTS;
+
+    // Queue next segment
+    node_->Motion.MoveWentDone();            // same as your example
+    node_->Motion.MovePosnStart(delta_counts);
+
+    move_in_flight_ = true;
   }
 
   void shutdown_teknic() {
     std::lock_guard<std::mutex> lk(mtx_);
-
-    if (!node_) return;
+    if (!node_ || !mgr_) return;
 
     try {
-      node_->Motion.MoveVelStop();
+      // Soft stop: stop issuing new segments by zeroing cmd_
+      cmd_ = 0.0;
+
+      // Let any in-flight move finish for a short time
+      double timeout = mgr_->TimeStampMsec() + 500;
+      while (move_in_flight_ && mgr_->TimeStampMsec() < timeout) {
+        if (node_->Motion.MoveIsDone()) move_in_flight_ = false;
+        mgr_->Delay(10);
+      }
+
       node_->EnableReq(false);
       mgr_->PortsClose();
     } catch (...) {
-      // Ignore shutdown errors
+      // ignore shutdown errors
     }
+
+    node_ = nullptr;
+    mgr_ = nullptr;
   }
 };
 
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
-
   try {
-    auto node = std::make_shared<ClearPathKeyboardNode>();
-    rclcpp::spin(node);
+    rclcpp::spin(std::make_shared<ClearPathJogNode>());
   } catch (const mnErr &e) {
-    fprintf(stderr,
-      "Teknic error: addr=%d err=0x%08x msg=%s\n",
-      e.TheAddr, e.ErrorCode, e.ErrorMsg);
+    fprintf(stderr, "Teknic mnErr: addr=%d err=0x%08x msg=%s\n",
+            e.TheAddr, e.ErrorCode, e.ErrorMsg);
   } catch (const std::exception &e) {
     fprintf(stderr, "Fatal: %s\n", e.what());
   }
-
   rclcpp::shutdown();
   return 0;
 }
