@@ -8,9 +8,10 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
 
 add_executable(clearpath_sc_node src/clearpath_sc_ros2_node.cpp)
-ament_target_dependencies(clearpath_sc_node rclcpp)
+ament_target_dependencies(clearpath_sc_node rclcpp std_msgs)
 
 # ---- Teknic sFoundation include dir (equivalent to -I../../inc/inc-pub) ----
 # Option A (recommended): pass it in via -DTEKNIC_INCLUDE_DIR=...
