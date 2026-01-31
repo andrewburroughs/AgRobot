@@ -52,8 +52,12 @@ def main(args=None):
                     node.get_logger().info("'q' pressed, shutting down.")
                     break
                 
-                if len(key) == 3 and key[-1] in key_map:
+                if key.startswith('\x1b') and len(key) == 3:
                     final_char = key[-1]
+                elif len(key) == 1:
+                    final_char = key
+
+                if final_char in key_map:
                     mapping = key_map[final_char]
                     if mapping['topic'] == 'talon_1_speed':
                         talon_1_speed = mapping['value']
