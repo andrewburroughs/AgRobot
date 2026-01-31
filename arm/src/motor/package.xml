@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>clearpath_sc_ros2</name>
+  <version>0.0.1</version>
+  <description>ROS2 node for Teknic ClearPath SC (sFoundation) slow velocity control</description>
+
+  <maintainer email="you@yourdomain.com">You</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -166,7 +166,7 @@ int main(int argc,char** argv){
 	talonSRX->ConfigAllowableClosedloopError(kPIDLoopIdx,0,kTimeoutMs);
 
 	talonSRX->Set(ControlMode::PercentOutput, 0.0);
-	talonSRX->ConfigSelectedFeedbackSensor(FeedbackDevice::QuadEncoder);
+	talonSRX->ConfigSelectedFeedbackSensor(FeedbackDevice::QuadEncoder, 0, 30);
 	talonSRX->SetStatusFramePeriod(StatusFrame::Status_2_Feedback0_, 10, 10);
 
 	RCLCPP_INFO(nodeHandle->get_logger(),"configured talon");

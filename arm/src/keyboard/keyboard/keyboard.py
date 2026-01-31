@@ -8,6 +8,8 @@ key_map = {
     'B': {'topic': 'talon_2_speed', 'value': -1.0}, # Down arrow
     'C': {'topic': 'talon_1_speed', 'value':  1.0}, # Right arrow
     'D': {'topic': 'talon_1_speed', 'value': -1.0}, # Left arrow
+    'a': {'topic': 'motor_speed', 'value': -1.0},
+    'd': {'topic': 'motor_speed', 'value': 1.0}
 }
 
 def get_key(settings):
@@ -32,6 +34,7 @@ def main(args=None):
     
     pub1 = node.create_publisher(Float32, 'talon_1_speed', 10)
     pub2 = node.create_publisher(Float32, 'talon_2_speed', 10)
+    pub3 = node.create_publisher(Float32, 'motor_speed', 10)
     
     node.get_logger().info("Terminal Keyboard Node Started...")
     node.get_logger().info("Use arrow keys to control. Press 'q' to quit.")
@@ -42,6 +45,7 @@ def main(args=None):
             
             talon_1_speed = 0.0
             talon_2_speed = 0.0
+            motor_speed = 0.0
 
             if key:
                 if key == 'q':
@@ -55,6 +59,8 @@ def main(args=None):
                         talon_1_speed = mapping['value']
                     elif mapping['topic'] == 'talon_2_speed':
                         talon_2_speed = mapping['value']
+                    elif mapping['topic'] == 'motor_speed':
+                        motor_speed = mapping['value']
 
             msg1 = Float32()
             msg1.data = talon_1_speed
@@ -64,7 +70,11 @@ def main(args=None):
             msg2.data = talon_2_speed
             pub2.publish(msg2)
 
-            node.get_logger().info(f'Publishing: Talon1={talon_1_speed}, Talon2={talon_2_speed}')
+            msg3 = Float32()
+            msg3.data = motor_speed
+            pub3.publish(msg3)
+
+            node.get_logger().info(f'Publishing: Talon1={talon_1_speed}, Talon2={talon_2_speed}, Motor={motor_speed}')
 
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
