@@ -14,11 +14,10 @@ static bool IsBusPowerLow(INode &node) {
   return node.Status.Power.Value().fld.InBusLoss;
 }
 
-static std::string AlertsToString(const decltype(std::declval<sFnd::INode>().Status.Alerts.Value()) &alerts) {
+static std::string AlertsToString(decltype(std::declval<sFnd::INode>().Status.Alerts.Value()) alerts) {
   char buf[512];
   buf[0] = '\0';
-  // Your version: StateStr(char*, size_t)
-  alerts.StateStr(buf, sizeof(buf));
+  alerts.StateStr(buf, sizeof(buf));   // non-const method, OK now
   return std::string(buf);
 }
 
