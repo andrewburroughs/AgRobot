@@ -14,6 +14,14 @@ static bool IsBusPowerLow(INode &node) {
   return node.Status.Power.Value().fld.InBusLoss;
 }
 
+static std::string AlertsToString(const decltype(std::declval<sFnd::INode>().Status.Alerts.Value()) &alerts) {
+  char buf[512];
+  buf[0] = '\0';
+  // Your version: StateStr(char*, size_t)
+  alerts.StateStr(buf, sizeof(buf));
+  return std::string(buf);
+}
+
 class ClearPathJogNode : public rclcpp::Node {
 public:
   ClearPathJogNode() : Node("clearpath_sc_jog_node") {
@@ -136,7 +144,15 @@ private:
     // Alerts.Value() is known to exist from your earlier attempts.
     // We’ll print the raw bits as hex. The type varies; cast through uint32_t/uint64_t conservatively.
     auto alerts = node_->Status.Alerts.Value();
+    std::string alert_str = AlertsToString(alerts);
 
+    RCLCPP_ERROR(get_logger(),
+        "[%s] ready=%d bus_loss=%d alerts=\"%s\"",
+        context,
+        ready ? 1 : 0,
+        bus_loss ? 1 : 0,
+        alert_str.c_str());
+    }
   }
 
   bool ensure_ready_locked() {
