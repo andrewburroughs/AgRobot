@@ -141,7 +141,7 @@ void tick() {
     if (!node_->Motion.IsReady()) {
         // Optional: Read the Alert register to see WHY it crashed
         auto alerts = node_->Status.Alerts.Value(); 
-        RCLCPP_ERROR(get_logger(), "Node crashed. Alerts: %s", alerts.StateString());
+        RCLCPP_ERROR(get_logger(), "Node crashed. Alerts: %s", alerts.StateStr());
         
         // Attempt to re-enable if it crashed
         node_->Status.AlertsClear();
