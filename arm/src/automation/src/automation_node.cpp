@@ -82,8 +82,8 @@ private:
         auto current_time = this->now();
         auto elapsed_duration = current_time - start_time_;
         double elapsed_seconds = elapsed_duration.seconds();
-        motor1Position += motor1Speed * elapsed_duration.seconds() * 0.39;
-        motor2Position += motor2Speed * elapsed_duration.seconds() * 0.39;
+        motor1Position = motor1Speed * elapsed_duration.seconds() * 0.39;
+        motor2Position = motor2Speed * elapsed_duration.seconds() * 0.39;
         
         if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
             RCLCPP_INFO(this->get_logger(), "Running... Time left: %.1f s", currentDuration - elapsed_seconds);
