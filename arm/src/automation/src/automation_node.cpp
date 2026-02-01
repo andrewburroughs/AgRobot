@@ -24,7 +24,7 @@ public:
     talon1SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_1_speed", 10);
     talon2SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_2_speed", 10);
     
-    auto finish = std::chrono::high_resolution_clock::now();
+    finish = std::chrono::high_resolution_clock::now();
     
     // 2. Control loop running at 10Hz (every 100ms)
     timer_ = this->create_wall_timer(
@@ -84,7 +84,7 @@ private:
         auto current_time = this->now();
         auto elapsed_duration = current_time - start_time_;
         double elapsed_seconds = elapsed_duration.seconds();
-        finish = std::chrono::high_resolution_clock::now();
+        auto finish = std::chrono::high_resolution_clock::now();
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count();
 
         motor1Position += motor1Speed * elapsed_ms * 18.0 / 46.0 * 1000;
@@ -105,6 +105,7 @@ private:
                 talon2Speed.data = 0.0;
                 motor2Speed = 0.0;
                 currentDuration = 23;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -122,6 +123,7 @@ private:
                 talon1Speed.data = 0.0;
                 motor1Speed = 0.0;
                 currentDuration = 16;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -135,6 +137,7 @@ private:
                 talon2Speed.data = 0.0;
                 motor2Speed = 0.0;
                 currentDuration = 16;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -148,6 +151,7 @@ private:
                 talon2Speed.data = 0.0;
                 motor2Speed = 0.0;
                 currentDuration = 23;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -160,6 +164,7 @@ private:
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
                 motor1Speed = 0.0;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -177,6 +182,7 @@ private:
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
                 motor2Speed = 0.0;
+                start = std::chrono::high_resolution_clock::now();
                 return;
             }
         }
@@ -185,6 +191,7 @@ private:
             motor2Speed = 0.0;
             talon2Speed.data = 0.0;
             motor2Speed = 0.0;
+            start = std::chrono::high_resolution_clock::now();
         }
         
     }
@@ -202,6 +209,8 @@ private:
   bool homing_active_;
   bool timer_started_;
   rclcpp::Time start_time_;
+  auto start;
+  auto finish;
 };
 
 int main(int argc, char * argv[])
