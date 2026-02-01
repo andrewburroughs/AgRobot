@@ -53,12 +53,12 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 
   static constexpr size_t NODE_INDEX = 0;
-  static constexpr double ACCEL_RPM_PER_SEC = 50.0;
-  static constexpr double VEL_LIM_RPM = 2.0;
-  static constexpr int    JOG_STEP_CNTS = 20;     // start larger than 10 for testing
+  static constexpr double ACCEL_RPM_PER_SEC = 5.0;
+  static constexpr double VEL_LIM_RPM = 0.5;
+  static constexpr int    JOG_STEP_CNTS = 200;     // start larger than 10 for testing
   static constexpr int    ENABLE_TIMEOUT_MS = 10000;
 
-  static constexpr int    TICK_MS = 10;
+  static constexpr int    TICK_MS = 50;
   static constexpr double DEADZONE = 0.05;
 
   double cmd_{0.0};
