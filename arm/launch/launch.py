@@ -22,7 +22,7 @@ def generate_launch_description():
                 {"kill_key": 50},
                 {"op_mode": 0},
                 {"print_data": False},
-                {"can_interface": "can0"}
+                {"can_interface": "can1"}
             ],
             output={'stderr': 'screen', 'stdout': 'screen'}
         )
@@ -46,7 +46,7 @@ def generate_launch_description():
                 {"kill_key": 51},
                 {"op_mode": 0},
                 {"print_data": False},
-                {"can_interface": "can0"}
+                {"can_interface": "can1"}
             ],
             output={'stderr': 'screen', 'stdout': 'screen'}
         )
