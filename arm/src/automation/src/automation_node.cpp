@@ -39,6 +39,14 @@ private:
     auto talon1Speed = std_msgs::msg::Float32();
     auto talon2Speed = std_msgs::msg::Float32();
 
+    rclcpp::Time current_time = this->now();
+    if (last_loop_time_.nanoseconds() == 0) {
+        last_loop_time_ = current_time; // First run initialization
+        return;
+    }
+    double dt = (current_time - last_loop_time_).seconds();
+    last_loop_time_ = current_time;
+
     // --- STATE: HOMING ---
     if (homing_active_ && !homing_complete) {
         // Capture the start time ONCE when we first enter this state
@@ -87,10 +95,17 @@ private:
         auto finish = std::chrono::high_resolution_clock::now();
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count();
 
-        motor1Position += motor1Speed * elapsed_ms * 18.0 / 46.0 / 1000;
-        motor2Position += motor2Speed * elapsed_ms * 6.0 / 15.0 / 1000;
+        double m1_velocity_in_per_s = 18.0 / 46.0;
+    
+        // Motor 2: 6 inches / 15.3 seconds = 0.3921 in/s
+        double m2_velocity_in_per_s = 6.0 / 15.3;
+
+        // INTEGRATION: Position = Position + (Speed * Time_Delta * Velocity_Constant)
+        // Note: motor1Speed is -1.0 to 1.0, so this handles direction automatically.
+        motor1Position += motor1Speed * dt * m1_velocity_in_per_s;
+        motor2Position += motor2Speed * dt * m2_velocity_in_per_s;
         
-        if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
+        if ((int)elapsed_seconds % 3 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
             RCLCPP_INFO(this->get_logger(), "Running... Time left: %.1f s", currentDuration - elapsed_seconds);
             RCLCPP_INFO(this->get_logger(), "Motor 1 Position: %f", motor1Position);
             RCLCPP_INFO(this->get_logger(), "Motor 2 Position: %f", motor2Position);
@@ -209,6 +224,7 @@ private:
   bool homing_active_;
   bool timer_started_;
   rclcpp::Time start_time_;
+  rclcpp::Time last_loop_time_;
   std::chrono::time_point<std::chrono::high_resolution_clock> start;
   std::chrono::time_point<std::chrono::high_resolution_clock> finish;
 };
