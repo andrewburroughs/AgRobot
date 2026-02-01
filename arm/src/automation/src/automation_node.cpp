@@ -103,7 +103,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
-                break;
+                return;
             }
         }
         if(step == 3){
@@ -114,7 +114,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
-                break;
+                return;
             }
         }
         if(step == 4){
@@ -125,7 +125,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
-                break;
+                return;
             }
         }
         if(step == 5){
@@ -136,7 +136,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
-                break;
+                return;
             }
         }
         if(step == 6){
@@ -152,7 +152,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
-                break;
+                return;
             }
         }
         if(step == 8){
