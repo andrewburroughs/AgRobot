@@ -6,6 +6,7 @@
 using namespace std::chrono_literals;
 
 int step = 0;
+bool homing_complete = false;
 
 class AutomationNode : public rclcpp::Node
 {
@@ -32,7 +33,7 @@ private:
     auto talon2Speed = std_msgs::msg::Float32();
 
     // --- STATE: HOMING ---
-    if (homing_active_) {
+    if (homing_active_ && !homing_complete) {
         // Capture the start time ONCE when we first enter this state
         if (!timer_started_) {
             start_time_ = this->now();
@@ -52,7 +53,7 @@ private:
 
             // Optional: Print status every 5 seconds so you know it's alive
             if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
-                 RCLCPP_INFO(this->get_logger(), "Homing... Time left: %.1f s", 50.0 - elapsed_seconds);
+                RCLCPP_INFO(this->get_logger(), "Homing... Time left: %.1f s", 50.0 - elapsed_seconds);
             }
             if(elapsed_seconds > 20){
               talon2Speed.data = 0.0;
@@ -64,7 +65,10 @@ private:
             talon2Speed.data = 0.0;
             homing_active_ = false; // Disable homing
             RCLCPP_INFO(this->get_logger(), "HOMING COMPLETE. Stopping motor.");
+            RCLCPP_INFO(this->get_logger(), "Motor 1 Position: 0.0\"");
+            RCLCPP_INFO(this->get_logger(), "Motor 2 Position: 0.0\"");
             start_time_ = this->now();
+            homing_complete = true;
         }
     } 
     // --- STATE: IDLE ---
@@ -99,6 +103,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
+                break;
             }
         }
         if(step == 3){
@@ -109,6 +114,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                break;
             }
         }
         if(step == 4){
@@ -119,6 +125,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                break;
             }
         }
         if(step == 5){
@@ -129,11 +136,13 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
+                break;
             }
         }
         if(step == 6){
             RCLCPP_INFO(this->get_logger(), "In step 6");
             // rotate 45 degrees right
+            step += 1;
         }
         if(step == 7){
             RCLCPP_INFO(this->get_logger(), "In step 7");
@@ -143,6 +152,7 @@ private:
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                break;
             }
         }
         if(step == 8){
