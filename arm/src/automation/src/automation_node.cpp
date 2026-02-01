@@ -7,6 +7,11 @@ using namespace std::chrono_literals;
 
 int step = 0;
 bool homing_complete = false;
+double motor1Position = 0.0;
+double motor2Position = 0.0;
+double currentDuration = 0.0;
+double motor1Speed = 0.0;
+double motor2Speed = 0.0;
 
 class AutomationNode : public rclcpp::Node
 {
@@ -69,6 +74,7 @@ private:
             RCLCPP_INFO(this->get_logger(), "Motor 2 Position: 0.0\"");
             start_time_ = this->now();
             homing_complete = true;
+            currentDuration = 16;
         }
     } 
     // --- STATE: IDLE ---
@@ -76,88 +82,104 @@ private:
         auto current_time = this->now();
         auto elapsed_duration = current_time - start_time_;
         double elapsed_seconds = elapsed_duration.seconds();
+        motor1Position += motor1Speed * elapsed_duration.seconds() * 0.39;
+        motor2Position += motor2Speed * elapsed_duration.seconds() * 0.39;
+        
         if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
-            RCLCPP_INFO(this->get_logger(), "Homing... Time left: %.1f s", 50.0 - elapsed_seconds);
+            RCLCPP_INFO(this->get_logger(), "Running... Time left: %.1f s", currentDuration - elapsed_seconds);
+            RCLCPP_INFO(this->get_logger(), "Motor 1 Position: %f", motor1Position);
+            RCLCPP_INFO(this->get_logger(), "Motor 2 Position: %f", motor2Position);
         }
         if(step == 0){
             // Extend talon 2
-            RCLCPP_INFO(this->get_logger(), "In step 0");
             talon2Speed.data = 1.0;
-            if(elapsed_seconds > 16){
+            motor2Speed = 1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
-                
+                motor2Speed = 0.0;
+                currentDuration = 23;
+                return;
             }
         }
         if(step == 1){
             // rotate 45 degrees left
-            RCLCPP_INFO(this->get_logger(), "In step 1");
             step += 1;
         }
         if(step == 2){
-            RCLCPP_INFO(this->get_logger(), "In step 2");
             // extend talon 1 halfway
             talon1Speed.data = 1.0;
-            if(elapsed_seconds > 23){
+            motor1Speed = 1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
+                motor1Speed = 0.0;
+                currentDuration = 16;
                 return;
             }
         }
         if(step == 3){
-            RCLCPP_INFO(this->get_logger(), "In step 3");
             // retract talon 2
             talon2Speed.data = -1.0;
-            if(elapsed_seconds > 16){
+            motor2Speed = -1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                motor2Speed = 0.0;
+                currentDuration = 16;
                 return;
             }
         }
         if(step == 4){
-            RCLCPP_INFO(this->get_logger(), "In step 4");
             // extend talon 2
             talon2Speed.data = 1.0;
-            if(elapsed_seconds > 16){
+            motor2Speed = 1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                motor2Speed = 0.0;
+                currentDuration = 23;
                 return;
             }
         }
         if(step == 5){
-            RCLCPP_INFO(this->get_logger(), "In step 5");
             // retract talon 1
             talon1Speed.data = -1.0;
-            if(elapsed_seconds > 23){
+            motor1Speed = -1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon1Speed.data = 0.0;
+                motor1Speed = 0.0;
                 return;
             }
         }
         if(step == 6){
-            RCLCPP_INFO(this->get_logger(), "In step 6");
             // rotate 45 degrees right
             step += 1;
+            currentDuration = 16;
         }
         if(step == 7){
-            RCLCPP_INFO(this->get_logger(), "In step 7");
             // retract talon 2
             talon2Speed.data = -1.0;
-            if(elapsed_seconds > 16){
+            motor2Speed = -1.0;
+            if(elapsed_seconds > currentDuration){
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                motor2Speed = 0.0;
                 return;
             }
         }
         if(step == 8){
             talon1Speed.data = 0.0;
+            motor2Speed = 0.0;
             talon2Speed.data = 0.0;
+            motor2Speed = 0.0;
         }
         
     }
