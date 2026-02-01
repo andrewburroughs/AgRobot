@@ -87,8 +87,8 @@ private:
         auto finish = std::chrono::high_resolution_clock::now();
         auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count();
 
-        motor1Position += motor1Speed * elapsed_ms * 18.0 / 46.0 * 1000;
-        motor2Position += motor2Speed * elapsed_ms * 6.0 / 15.0 * 1000;
+        motor1Position += motor1Speed * elapsed_ms * 18.0 / 46.0 / 1000;
+        motor2Position += motor2Speed * elapsed_ms * 6.0 / 15.0 / 1000;
         
         if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
             RCLCPP_INFO(this->get_logger(), "Running... Time left: %.1f s", currentDuration - elapsed_seconds);
