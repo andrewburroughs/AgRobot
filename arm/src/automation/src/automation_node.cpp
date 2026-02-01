@@ -209,8 +209,8 @@ private:
   bool homing_active_;
   bool timer_started_;
   rclcpp::Time start_time_;
-  auto start;
-  auto finish;
+  std::chrono::time_point<std::chrono::high_resolution_clock> start;
+  std::chrono::time_point<std::chrono::high_resolution_clock> finish;
 };
 
 int main(int argc, char * argv[])
