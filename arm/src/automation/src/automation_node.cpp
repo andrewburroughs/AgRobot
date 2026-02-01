@@ -97,9 +97,6 @@ private:
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  talon1SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_1_speed",1);
-  talon2SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_2_speed",1);
-
   rclcpp::spin(std::make_shared<AutomationNode>());
   rclcpp::shutdown();
   return 0;
