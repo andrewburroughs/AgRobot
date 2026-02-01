@@ -146,7 +146,7 @@ private:
     auto alerts = node_->Status.Alerts.Value();
     std::string alert_str = AlertsToString(alerts);
 
-    RCLCPP_ERROR(get_logger(),
+    RCLCPP_ERROR(this->get_logger(),
         "[%s] ready=%d bus_loss=%d alerts=\"%s\"",
         context,
         ready ? 1 : 0,
