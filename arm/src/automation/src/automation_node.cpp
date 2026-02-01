@@ -72,22 +72,28 @@ private:
         auto current_time = this->now();
         auto elapsed_duration = current_time - start_time_;
         double elapsed_seconds = elapsed_duration.seconds();
-            
+        if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
+            RCLCPP_INFO(this->get_logger(), "Homing... Time left: %.1f s", 50.0 - elapsed_seconds);
+        }
         if(step == 0){
             // Extend talon 2
+            RCLCPP_INFO(this->get_logger(), "In step 0");
             talon2Speed.data = 1.0;
             if(elapsed_seconds > 16){
                 step += 1;
                 start_time_ = this->now();
                 talon2Speed.data = 0.0;
+                
             }
         }
         if(step == 1){
             // rotate 45 degrees left
+            RCLCPP_INFO(this->get_logger(), "In step 1");
             step += 1;
         }
         if(step == 2){
-          // extend talon 1 halfway
+            RCLCPP_INFO(this->get_logger(), "In step 2");
+            // extend talon 1 halfway
             talon1Speed.data = 1.0;
             if(elapsed_seconds > 23){
                 step += 1;
@@ -96,6 +102,7 @@ private:
             }
         }
         if(step == 3){
+            RCLCPP_INFO(this->get_logger(), "In step 3");
             // retract talon 2
             talon2Speed.data = -1.0;
             if(elapsed_seconds > 16){
@@ -105,6 +112,7 @@ private:
             }
         }
         if(step == 4){
+            RCLCPP_INFO(this->get_logger(), "In step 4");
             // extend talon 2
             talon2Speed.data = 1.0;
             if(elapsed_seconds > 16){
@@ -114,6 +122,7 @@ private:
             }
         }
         if(step == 5){
+            RCLCPP_INFO(this->get_logger(), "In step 5");
             // retract talon 1
             talon1Speed.data = -1.0;
             if(elapsed_seconds > 23){
@@ -123,9 +132,11 @@ private:
             }
         }
         if(step == 6){
+            RCLCPP_INFO(this->get_logger(), "In step 6");
             // rotate 45 degrees right
         }
         if(step == 7){
+            RCLCPP_INFO(this->get_logger(), "In step 7");
             // retract talon 2
             talon2Speed.data = -1.0;
             if(elapsed_seconds > 16){
