@@ -62,17 +62,17 @@ private:
 
   // Make these conservative for a rigid coupler + bearing load
   static constexpr double ACCEL_RPM_PER_SEC = 3.0;  // gentler than 5.0
-  static constexpr double VEL_LIM_RPM       = 0.35; // gentler than 0.5
+  static constexpr double VEL_LIM_RPM       = 0.5; // gentler than 0.5
 
   // Jog segment behavior
-  static constexpr int    JOG_STEP_MIN_CNTS = 80;   // start small
-  static constexpr int    JOG_STEP_MAX_CNTS = 250;  // cap
-  static constexpr int    JOG_STEP_RAMP_PER_TICK = 10;
+  static constexpr int JOG_STEP_MIN_CNTS = 2000;
+    static constexpr int JOG_STEP_MAX_CNTS = 2000;
+    static constexpr int JOG_STEP_RAMP_PER_TICK = 0;
 
   static constexpr int    ENABLE_TIMEOUT_MS = 10000;
 
   // Loop and filtering
-  static constexpr int    TICK_MS  = 50;
+  static constexpr int    TICK_MS  = 200;
   static constexpr double DEADZONE = 0.05;
 
   // Direction-change hold (prevents hard reversals)
