@@ -129,42 +129,49 @@ private:
     cmd_ = msg->data; // store; tick() will act on it
   }
 
-  void tick() {
+  // Add a new member variable to track the last sent velocity
+double last_sent_vel_ = 0.0; 
+
+void tick() {
     std::lock_guard<std::mutex> lk(mtx_);
     if (!node_) return;
 
-    if (IsBusPowerLow(*node_)) {
-      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
-                            "Bus power low (InBusLoss=1). Not issuing moves.");
-      return;
+    // 1. Safety Check: Is the node actually enabled?
+    // If a fault occurred (like the one you are seeing), this will be false.
+    if (!node_->Motion.IsReady()) {
+        // Optional: Read the Alert register to see WHY it crashed
+        // auto alerts = node_->Status.Alerts.Value(); 
+        // RCLCPP_ERROR(get_logger(), "Node crashed. Alerts: %s", alerts.StateString());
+        
+        // Attempt to re-enable if it crashed
+        node_->Status.AlertsClear();
+        node_->Motion.NodeStopClear();
+        node_->EnableReq(true);
+        return; 
     }
 
-    // Update move_in_flight_ based on MoveIsDone()
-    if (move_in_flight_) {
-      if (node_->Motion.MoveIsDone()) {
-        move_in_flight_ = false;
-      } else {
-        // still moving; don't queue another segment
-        return;
-      }
-    }
-
-    // Decide whether we should start another jog segment
+    // 2. Velocity Logic
+    // If the command is effectively zero, stop.
     if (std::fabs(cmd_) < DEADZONE) {
-      // Soft stop: don't start new segments
-      return;
+        if (std::fabs(last_sent_vel_) > DEADZONE) {
+        node_->Motion.MoveVelStart(0); // Stop smoothly
+        last_sent_vel_ = 0.0;
+        }
+        return;
     }
 
-    // Direction based on sign
-    const int dir = (cmd_ > 0.0) ? +1 : -1;
-    const int delta_counts = dir * JOG_STEP_CNTS;
-
-    // Queue next segment
-    node_->Motion.MoveWentDone();            // same as your example
-    node_->Motion.MovePosnStart(delta_counts);
-
-    move_in_flight_ = true;
-  }
+    // 3. Send Velocity Command
+    // Only send the command if it has changed to avoid spamming the bus
+    double target_vel = (cmd_ > 0) ? VEL_LIM_RPM : -VEL_LIM_RPM;
+    
+    if (std::abs(target_vel - last_sent_vel_) > 0.1) {
+        node_->Motion.MoveVelStart(target_vel);
+        last_sent_vel_ = target_vel;
+        
+        // Note: We do NOT set move_in_flight_ or check MoveIsDone() 
+        // because velocity moves run forever until told to stop.
+    }
+    }
 
   void shutdown_teknic() {
     std::lock_guard<std::mutex> lk(mtx_);
