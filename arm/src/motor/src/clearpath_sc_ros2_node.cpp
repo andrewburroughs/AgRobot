@@ -137,13 +137,9 @@ private:
     // We’ll print the raw bits as hex. The type varies; cast through uint32_t/uint64_t conservatively.
     auto alerts = node_->Status.Alerts.Value();
 
-    // Many sFoundation versions allow implicit conversion to an integer-like "State".
-    // If yours doesn’t, this line may need adjustment after you paste the compile error.
-    uint32_t raw = static_cast<uint32_t>(alerts.State);
-
     RCLCPP_ERROR(get_logger(),
       "[%s] ready=%d bus_loss=%d alerts_raw=0x%08X",
-      context, ready ? 1 : 0, bus_loss ? 1 : 0, raw);
+      context, ready ? 1 : 0, bus_loss ? 1 : 0, alerts.StateStr());
   }
 
   bool ensure_ready_locked() {
