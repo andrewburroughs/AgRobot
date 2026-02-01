@@ -64,17 +64,81 @@ private:
             talon2Speed.data = 0.0;
             homing_active_ = false; // Disable homing
             RCLCPP_INFO(this->get_logger(), "HOMING COMPLETE. Stopping motor.");
+            start_time_ = this->now();
         }
     } 
     // --- STATE: IDLE ---
     else {
-        // Keep sending 0.0 to ensure motor stays stopped
-
-        if(step == 0){
+        auto current_time = this->now();
+        auto elapsed_duration = current_time - start_time_;
+        double elapsed_seconds = elapsed_duration.seconds();
             
+        if(step == 0){
+            // Extend talon 2
+            talon2Speed.data = 1.0;
+            if(elapsed_seconds > 16){
+                step += 1;
+                start_time_ = this->now();
+                talon2Speed.data = 0.0;
+            }
         }
-        talon1Speed.data = 0.0;
-        talon2Speed.data = 0.0;
+        if(step == 1){
+            // rotate 45 degrees left
+            step += 1;
+        }
+        if(step == 2){
+          // extend talon 1 halfway
+            talon1Speed.data = 1.0;
+            if(elapsed_seconds > 23){
+                step += 1;
+                start_time_ = this->now();
+                talon1Speed.data = 0.0;
+            }
+        }
+        if(step == 3){
+            // retract talon 2
+            talon2Speed.data = -1.0;
+            if(elapsed_seconds > 16){
+                step += 1;
+                start_time_ = this->now();
+                talon2Speed.data = 0.0;
+            }
+        }
+        if(step == 4){
+            // extend talon 2
+            talon2Speed.data = 1.0;
+            if(elapsed_seconds > 16){
+                step += 1;
+                start_time_ = this->now();
+                talon2Speed.data = 0.0;
+            }
+        }
+        if(step == 5){
+            // retract talon 1
+            talon1Speed.data = -1.0;
+            if(elapsed_seconds > 23){
+                step += 1;
+                start_time_ = this->now();
+                talon1Speed.data = 0.0;
+            }
+        }
+        if(step == 6){
+            // rotate 45 degrees right
+        }
+        if(step == 7){
+            // retract talon 2
+            talon2Speed.data = -1.0;
+            if(elapsed_seconds > 16){
+                step += 1;
+                start_time_ = this->now();
+                talon2Speed.data = 0.0;
+            }
+        }
+        if(step == 8){
+            talon1Speed.data = 0.0;
+            talon2Speed.data = 0.0;
+        }
+        
     }
 
     // Publish the command to the motor node
