@@ -23,7 +23,9 @@ public:
     // Topic name "motor_cmd" must match the 'speed_topic' in your launch file
     talon1SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_1_speed", 10);
     talon2SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_2_speed", 10);
-
+    
+    auto finish = std::chrono::high_resolution_clock::now();
+    
     // 2. Control loop running at 10Hz (every 100ms)
     timer_ = this->create_wall_timer(
       100ms, std::bind(&AutomationNode::timer_callback, this));
@@ -82,8 +84,11 @@ private:
         auto current_time = this->now();
         auto elapsed_duration = current_time - start_time_;
         double elapsed_seconds = elapsed_duration.seconds();
-        motor1Position = motor1Speed * elapsed_duration.seconds() * 0.39;
-        motor2Position = motor2Speed * elapsed_duration.seconds() * 0.39;
+        finish = std::chrono::high_resolution_clock::now();
+        auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count();
+
+        motor1Position += motor1Speed * elapsed_ms * 18.0 / 46.0 * 1000;
+        motor2Position += motor2Speed * elapsed_ms * 6.0 / 15.0 * 1000;
         
         if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
             RCLCPP_INFO(this->get_logger(), "Running... Time left: %.1f s", currentDuration - elapsed_seconds);
