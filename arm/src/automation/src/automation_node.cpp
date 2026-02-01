@@ -6,9 +6,6 @@
 using namespace std::chrono_literals;
 
 int step = 0;
-std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon1SpeedPublisher;
-std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon2SpeedPublisher;
-
 
 class AutomationNode : public rclcpp::Node
 {
@@ -86,7 +83,8 @@ private:
   }
 
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisher_;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr talon1SpeedPublisher;
+  rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr talon2SpeedPublisher;
   
   // State variables
   bool homing_active_;
