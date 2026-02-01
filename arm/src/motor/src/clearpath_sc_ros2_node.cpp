@@ -4,38 +4,33 @@
 #include <vector>
 #include <mutex>
 #include <cmath>
+#include <cstdint>
 
 #include "pubSysCls.h"
 
 using namespace sFnd;
 
-// Same helper you used
 static bool IsBusPowerLow(INode &node) {
   return node.Status.Power.Value().fld.InBusLoss;
 }
 
 class ClearPathJogNode : public rclcpp::Node {
 public:
-  ClearPathJogNode()
-  : Node("clearpath_sc_jog_node")
-  {
+  ClearPathJogNode() : Node("clearpath_sc_jog_node") {
     init_teknic();
     enable_node();
 
-    // HARD-CODED TOPIC NAME (as requested)
     sub_ = create_subscription<std_msgs::msg::Float32>(
       "motor_speed", 10,
       std::bind(&ClearPathJogNode::speed_callback, this, std::placeholders::_1)
     );
 
-    // Timer drives the “segmented jog”
     timer_ = create_wall_timer(
       std::chrono::milliseconds(TICK_MS),
       std::bind(&ClearPathJogNode::tick, this)
     );
 
-    RCLCPP_INFO(get_logger(),
-      "Ready. Subscribed to [motor_speed]. >0 forward, <0 reverse, 0 soft-stop.");
+    RCLCPP_INFO(get_logger(), "Subscribed to [motor_speed]. >0 fwd, <0 rev, 0 stop.");
   }
 
   ~ClearPathJogNode() override {
@@ -43,30 +38,27 @@ public:
   }
 
 private:
-  // ---------- Teknic ----------
   SysManager *mgr_{nullptr};
   INode *node_{nullptr};
   std::mutex mtx_;
 
-  // ---------- ROS ----------
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
-  // ---------- Constants (edit here) ----------
   static constexpr size_t NODE_INDEX = 0;
-
-  static constexpr double ACCEL_RPM_PER_SEC = 50.0; // gentler accel than your example
-  static constexpr double VEL_LIM_RPM       = 2.0;  // “slow turn”
-  static constexpr int    JOG_STEP_CNTS     = 10;   // small step each segment (tune!)
+  static constexpr double ACCEL_RPM_PER_SEC = 50.0;
+  static constexpr double VEL_LIM_RPM = 2.0;
+  static constexpr int    JOG_STEP_CNTS = 20;     // start larger than 10 for testing
   static constexpr int    ENABLE_TIMEOUT_MS = 10000;
 
-  static constexpr int    TICK_MS           = 10;   // how often we try to queue next segment
-  static constexpr double DEADZONE          = 0.05; // ignore tiny noise
+  static constexpr int    TICK_MS = 10;
+  static constexpr double DEADZONE = 0.05;
 
-  double last_sent_vel_ = 0.0; 
-  // ---------- State ----------
-  double cmd_{0.0};          // last commanded motor_speed (-1..1 from keyboard)
-  bool   move_in_flight_{false};
+  double cmd_{0.0};
+  bool move_in_flight_{false};
+
+  // Throttled diagnostic timestamp
+  rclcpp::Time last_diag_time_{0, 0, RCL_ROS_TIME};
 
 private:
   void init_teknic() {
@@ -83,7 +75,7 @@ private:
 
     IPort &port = mgr_->Ports(0);
     if (NODE_INDEX >= port.NodeCount()) {
-      throw std::runtime_error("NODE_INDEX out of range for discovered hub");
+      throw std::runtime_error("NODE_INDEX out of range");
     }
 
     node_ = &port.Nodes(NODE_INDEX);
@@ -110,10 +102,11 @@ private:
     while (!node_->Motion.IsReady()) {
       if (mgr_->TimeStampMsec() > timeout) {
         if (IsBusPowerLow(*node_)) {
-          throw std::runtime_error("Bus power low (InBusLoss=1). Turn on supply.");
+          throw std::runtime_error("Bus power low (InBusLoss=1).");
         }
         throw std::runtime_error("Timed out enabling node");
       }
+      mgr_->Delay(10);
     }
 
     node_->AccUnit(INode::RPM_PER_SEC);
@@ -121,103 +114,106 @@ private:
     node_->Motion.AccLimit = ACCEL_RPM_PER_SEC;
     node_->Motion.VelLimit = VEL_LIM_RPM;
 
-    RCLCPP_INFO(get_logger(), "Node enabled; AccLimit=%.1f RPM/s, VelLimit=%.1f RPM",
+    RCLCPP_INFO(get_logger(), "Enabled. AccLimit=%.1f RPM/s VelLimit=%.1f RPM",
                 ACCEL_RPM_PER_SEC, VEL_LIM_RPM);
   }
 
   void speed_callback(const std_msgs::msg::Float32::SharedPtr msg) {
     std::lock_guard<std::mutex> lk(mtx_);
-    cmd_ = msg->data; // store; tick() will act on it
+    cmd_ = msg->data;
   }
 
-  // Add a new member variable to track the last sent velocity
+  // Print whatever alert info is available without relying on version-specific bitfields
+  void print_diagnostics_locked(const char* context) {
+    // throttle to 2 Hz
+    auto now = this->get_clock()->now();
+    if ((now - last_diag_time_).seconds() < 0.5) return;
+    last_diag_time_ = now;
 
-void tick() {
+    bool ready = node_->Motion.IsReady();
+    bool bus_loss = IsBusPowerLow(*node_);
+
+    // Alerts.Value() is known to exist from your earlier attempts.
+    // We’ll print the raw bits as hex. The type varies; cast through uint32_t/uint64_t conservatively.
+    auto alerts = node_->Status.Alerts.Value();
+
+    // Many sFoundation versions allow implicit conversion to an integer-like "State".
+    // If yours doesn’t, this line may need adjustment after you paste the compile error.
+    uint32_t raw = static_cast<uint32_t>(alerts.State);
+
+    RCLCPP_ERROR(get_logger(),
+      "[%s] ready=%d bus_loss=%d alerts_raw=0x%08X",
+      context, ready ? 1 : 0, bus_loss ? 1 : 0, raw);
+  }
+
+  bool ensure_ready_locked() {
+    if (IsBusPowerLow(*node_)) {
+      print_diagnostics_locked("bus_power_low");
+      return false;
+    }
+
+    if (node_->Motion.IsReady()) return true;
+
+    print_diagnostics_locked("not_ready_pre_recover");
+
+    // Try recovery (safe calls per your example)
+    node_->Status.AlertsClear();
+    node_->Motion.NodeStopClear();
+    node_->EnableReq(true);
+
+    double timeout = mgr_->TimeStampMsec() + 500;
+    while (!node_->Motion.IsReady() && mgr_->TimeStampMsec() < timeout) {
+      mgr_->Delay(10);
+    }
+
+    if (!node_->Motion.IsReady()) {
+      print_diagnostics_locked("not_ready_post_recover");
+      return false;
+    }
+
+    return true;
+  }
+
+  void tick() {
     std::lock_guard<std::mutex> lk(mtx_);
     if (!node_) return;
 
-    // 1. Safety Check: Is the node actually enabled?
-    // If a fault occurred (like the one you are seeing), this will be false.
-    if (!node_->Motion.IsReady()) {
-        // Get the raw register value
-        auto alertReg = node_->Status.Alerts.Value(); 
-        
-        RCLCPP_ERROR(get_logger(), "--- NODE DISABLED: DIAGNOSTICS ---");
-
-        // 1. Check Hard Limit Switches (Most common on new setups)
-        if (alertReg.cpm.Motion.EotFwd) {
-            RCLCPP_ERROR(get_logger(), "  >> FAULT: Hit Forward Limit Switch (Input A)");
-        }
-        if (alertReg.cpm.Motion.EotRev) {
-            RCLCPP_ERROR(get_logger(), "  >> FAULT: Hit Reverse Limit Switch (Input B)");
-        }
-
-        // 2. Check Physics/Load Issues
-        if (alertReg.cpm.Common.InTrackingFault) {
-            RCLCPP_ERROR(get_logger(), "  >> FAULT: Tracking Error (Motor lagging behind command)");
-            RCLCPP_ERROR(get_logger(), "     Fix: Increase JOG_STEP_CNTS or Reduce Acceleration");
-        }
-        if (alertReg.cpm.Common.RMSOverload) {
-            RCLCPP_ERROR(get_logger(), "  >> FAULT: RMS Overload (Motor worked too hard for too long)");
-        }
-
-        // 3. Check Bus Voltage
-        if (alertReg.cpm.Common.InBusVoltageFault) {
-             RCLCPP_ERROR(get_logger(), "  >> FAULT: Bus Voltage (Power supply dip or regen spike)");
-        }
-
-        RCLCPP_ERROR(get_logger(), "----------------------------------");
-
-        // Attempt to reset and re-enable
-        node_->Status.AlertsClear();
-        node_->Motion.NodeStopClear();
-        node_->EnableReq(true);
-        return; 
+    // Update in-flight state
+    if (move_in_flight_) {
+      if (!node_->Motion.MoveIsDone()) return;
+      move_in_flight_ = false;
     }
 
-    // 2. Velocity Logic
-    // If the command is effectively zero, stop.
-    if (std::fabs(cmd_) < DEADZONE) {
-        if (std::fabs(last_sent_vel_) > DEADZONE) {
-        node_->Motion.MoveVelStart(0); // Stop smoothly
-        last_sent_vel_ = 0.0;
-        }
-        return;
-    }
+    // Stop = don't start new segments
+    if (std::fabs(cmd_) < DEADZONE) return;
 
-    // 3. Send Velocity Command
-    // Only send the command if it has changed to avoid spamming the bus
-    double target_vel = (cmd_ > 0) ? VEL_LIM_RPM : -VEL_LIM_RPM;
-    
-    if (std::abs(target_vel - last_sent_vel_) > 0.1) {
-        node_->Motion.MoveVelStart(target_vel);
-        last_sent_vel_ = target_vel;
-        
-        // Note: We do NOT set move_in_flight_ or check MoveIsDone() 
-        // because velocity moves run forever until told to stop.
+    // Must be ready before issuing motion
+    if (!ensure_ready_locked()) return;
+
+    int dir = (cmd_ > 0.0) ? +1 : -1;
+    int delta = dir * JOG_STEP_CNTS;
+
+    try {
+      node_->Motion.MoveWentDone();
+      node_->Motion.MovePosnStart(delta);
+      move_in_flight_ = true;
+    } catch (const mnErr &e) {
+      // If motion call fails, print diagnostics once and stop issuing segments
+      print_diagnostics_locked("MovePosnStart_mnErr");
+      cmd_ = 0.0; // soft stop on error
+      throw;      // let main print full mnErr too
     }
-    }
+  }
 
   void shutdown_teknic() {
     std::lock_guard<std::mutex> lk(mtx_);
     if (!node_ || !mgr_) return;
 
     try {
-      // Soft stop: stop issuing new segments by zeroing cmd_
       cmd_ = 0.0;
-
-      // Let any in-flight move finish for a short time
-      double timeout = mgr_->TimeStampMsec() + 500;
-      while (move_in_flight_ && mgr_->TimeStampMsec() < timeout) {
-        if (node_->Motion.MoveIsDone()) move_in_flight_ = false;
-        mgr_->Delay(10);
-      }
-
       node_->EnableReq(false);
       mgr_->PortsClose();
-    } catch (...) {
-      // ignore shutdown errors
-    }
+    } catch (...) {}
 
     node_ = nullptr;
     mgr_ = nullptr;
