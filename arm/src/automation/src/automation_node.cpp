@@ -6,6 +6,9 @@
 using namespace std::chrono_literals;
 
 int step = 0;
+std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon1SpeedPublisher;
+std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Float32_<std::allocator<void> >, std::allocator<void> > > talon2SpeedPublisher;
+
 
 class AutomationNode : public rclcpp::Node
 {
@@ -15,7 +18,8 @@ public:
   {
     // 1. Create a publisher to talk to your existing motor node
     // Topic name "motor_cmd" must match the 'speed_topic' in your launch file
-    publisher_ = this->create_publisher<std_msgs::msg::Float32>("motor_cmd", 10);
+    talon1SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_1_speed", 10);
+    talon2SpeedPublisher = this->create_publisher<std_msgs::msg::Float32>("talon_2_speed", 10);
 
     // 2. Control loop running at 10Hz (every 100ms)
     timer_ = this->create_wall_timer(
@@ -27,7 +31,8 @@ public:
 private:
   void timer_callback()
   {
-    auto message = std_msgs::msg::Float32();
+    auto talon1Speed = std_msgs::msg::Float32();
+    auto talon2Speed = std_msgs::msg::Float32();
 
     // --- STATE: HOMING ---
     if (homing_active_) {
@@ -45,16 +50,21 @@ private:
 
         if (elapsed_seconds < 50.0) {
             // COMMAND: Full Retract (Backwards)
-            message.data = -1.0; // Range: -1.0 to 1.0
-            
+            talon1Speed.data = -1.0; // Range: -1.0 to 1.0
+            talon2Speed.data = -1.0;
+
             // Optional: Print status every 5 seconds so you know it's alive
             if ((int)elapsed_seconds % 5 == 0 && (elapsed_seconds - (int)elapsed_seconds) < 0.1) {
                  RCLCPP_INFO(this->get_logger(), "Homing... Time left: %.1f s", 50.0 - elapsed_seconds);
             }
+            if(elapsed_seconds > 20){
+              talon2Speed.data = 0.0;
+            }
         } 
         else {
             // TIME IS UP
-            message.data = 0.0;
+            talon1Speed.data = 0.0;
+            talon2Speed.data = 0.0;
             homing_active_ = false; // Disable homing
             RCLCPP_INFO(this->get_logger(), "HOMING COMPLETE. Stopping motor.");
         }
@@ -66,11 +76,13 @@ private:
         if(step == 0){
             
         }
-        message.data = 0.0;
+        talon1Speed.data = 0.0;
+        talon2Speed.data = 0.0;
     }
 
     // Publish the command to the motor node
-    publisher_->publish(message);
+    talon1SpeedPublisher->publish(talon1Speed);
+    talon2SpeedPublisher->publish(talon2Speed);
   }
 
   rclcpp::TimerBase::SharedPtr timer_;
@@ -85,6 +97,9 @@ private:
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
+  talon1SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_1_speed",1);
+  talon2SpeedPublisher= nodeHandle->create_publisher<std_msgs::msg::Float32>("talon_2_speed",1);
+
   rclcpp::spin(std::make_shared<AutomationNode>());
   rclcpp::shutdown();
   return 0;
