@@ -139,13 +139,36 @@ void tick() {
     // 1. Safety Check: Is the node actually enabled?
     // If a fault occurred (like the one you are seeing), this will be false.
     if (!node_->Motion.IsReady()) {
-        // Optional: Read the Alert register to see WHY it crashed
-        char alertStr[256];
-        node_->Status.Alerts.StateStr(alertStr, 256);
-
-        RCLCPP_ERROR(get_logger(), "Node Not Ready. Alerts: %s", alertStr);
+        // Get the raw register value
+        auto alertReg = node_->Status.Alerts.Value(); 
         
-        // Attempt to re-enable if it crashed
+        RCLCPP_ERROR(get_logger(), "--- NODE DISABLED: DIAGNOSTICS ---");
+
+        // 1. Check Hard Limit Switches (Most common on new setups)
+        if (alertReg.cpm.Motion.EotFwd) {
+            RCLCPP_ERROR(get_logger(), "  >> FAULT: Hit Forward Limit Switch (Input A)");
+        }
+        if (alertReg.cpm.Motion.EotRev) {
+            RCLCPP_ERROR(get_logger(), "  >> FAULT: Hit Reverse Limit Switch (Input B)");
+        }
+
+        // 2. Check Physics/Load Issues
+        if (alertReg.cpm.Common.InTrackingFault) {
+            RCLCPP_ERROR(get_logger(), "  >> FAULT: Tracking Error (Motor lagging behind command)");
+            RCLCPP_ERROR(get_logger(), "     Fix: Increase JOG_STEP_CNTS or Reduce Acceleration");
+        }
+        if (alertReg.cpm.Common.RMSOverload) {
+            RCLCPP_ERROR(get_logger(), "  >> FAULT: RMS Overload (Motor worked too hard for too long)");
+        }
+
+        // 3. Check Bus Voltage
+        if (alertReg.cpm.Common.InBusVoltageFault) {
+             RCLCPP_ERROR(get_logger(), "  >> FAULT: Bus Voltage (Power supply dip or regen spike)");
+        }
+
+        RCLCPP_ERROR(get_logger(), "----------------------------------");
+
+        // Attempt to reset and re-enable
         node_->Status.AlertsClear();
         node_->Motion.NodeStopClear();
         node_->EnableReq(true);
