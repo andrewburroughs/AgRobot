@@ -141,6 +141,8 @@ int main(int argc,char** argv){
 	printData = utils::getParameter<bool>(nodeHandle, "print_data", false);
 	std::string can_interface = utils::getParameter<std::string>(nodeHandle, "can_interface", "can0");
 
+	if(can_interface != "can0")
+		std::this_thread::sleep_for(std::chrono::milliseconds(10000));
 	ctre::phoenix::platform::can::SetCANInterface(can_interface.c_str());
 	RCLCPP_INFO(nodeHandle->get_logger(),"Opened CAN interface");
 
