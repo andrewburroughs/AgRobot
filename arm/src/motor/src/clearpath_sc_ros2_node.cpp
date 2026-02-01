@@ -63,6 +63,7 @@ private:
   static constexpr int    TICK_MS           = 10;   // how often we try to queue next segment
   static constexpr double DEADZONE          = 0.05; // ignore tiny noise
 
+  double last_sent_vel_ = 0.0; 
   // ---------- State ----------
   double cmd_{0.0};          // last commanded motor_speed (-1..1 from keyboard)
   bool   move_in_flight_{false};
@@ -130,7 +131,6 @@ private:
   }
 
   // Add a new member variable to track the last sent velocity
-double last_sent_vel_ = 0.0; 
 
 void tick() {
     std::lock_guard<std::mutex> lk(mtx_);
@@ -141,7 +141,7 @@ void tick() {
     if (!node_->Motion.IsReady()) {
         // Optional: Read the Alert register to see WHY it crashed
         // auto alerts = node_->Status.Alerts.Value(); 
-        // RCLCPP_ERROR(get_logger(), "Node crashed. Alerts: %s", alerts.StateString());
+        RCLCPP_ERROR(get_logger(), "Node crashed. Alerts: %s", alerts.StateString());
         
         // Attempt to re-enable if it crashed
         node_->Status.AlertsClear();
