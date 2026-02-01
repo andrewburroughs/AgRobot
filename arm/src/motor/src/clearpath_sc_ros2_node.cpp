@@ -152,7 +152,6 @@ private:
         ready ? 1 : 0,
         bus_loss ? 1 : 0,
         alert_str.c_str());
-    }
   }
 
   bool ensure_ready_locked() {
