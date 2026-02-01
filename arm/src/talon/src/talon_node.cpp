@@ -152,7 +152,7 @@ int main(int argc,char** argv){
 
 	talonSRX->SetInverted(invertMotor);
 	talonSRX->SelectProfileSlot(0,0);
-	talonSRX->ConfigSelectedFeedbackSensor(FeedbackDevice::Analog, 0, kTimeoutMs);
+	//talonSRX->ConfigSelectedFeedbackSensor(FeedbackDevice::Analog, 0, kTimeoutMs);
 	talonSRX->SetSensorPhase(true);
 	talonSRX->ConfigClosedloopRamp(2);
 	talonSRX->ConfigNominalOutputForward(0, kTimeoutMs);
