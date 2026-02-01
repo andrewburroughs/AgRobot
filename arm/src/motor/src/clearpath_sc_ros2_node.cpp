@@ -4,7 +4,8 @@
 #include <vector>
 #include <mutex>
 #include <cmath>
-#include <cstdint>
+#include <string>
+#include <algorithm>
 
 #include "pubSysCls.h"
 
@@ -14,10 +15,11 @@ static bool IsBusPowerLow(INode &node) {
   return node.Status.Power.Value().fld.InBusLoss;
 }
 
+// Your sFoundation: StateStr(char*, size_t) is NON-const, so pass by value.
 static std::string AlertsToString(decltype(std::declval<sFnd::INode>().Status.Alerts.Value()) alerts) {
   char buf[512];
   buf[0] = '\0';
-  alerts.StateStr(buf, sizeof(buf));   // non-const method, OK now
+  alerts.StateStr(buf, sizeof(buf));
   return std::string(buf);
 }
 
@@ -37,7 +39,8 @@ public:
       std::bind(&ClearPathJogNode::tick, this)
     );
 
-    RCLCPP_INFO(get_logger(), "Subscribed to [motor_speed]. >0 fwd, <0 rev, 0 stop.");
+    RCLCPP_INFO(get_logger(),
+      "Subscribed to [motor_speed]. >0 fwd, <0 rev, 0 stop. (gentle mode + RMS protection)");
   }
 
   ~ClearPathJogNode() override {
@@ -45,27 +48,60 @@ public:
   }
 
 private:
+  // -------- Teknic --------
   SysManager *mgr_{nullptr};
   INode *node_{nullptr};
   std::mutex mtx_;
 
+  // -------- ROS --------
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
+  // -------- Tuning (gentle defaults) --------
   static constexpr size_t NODE_INDEX = 0;
-  static constexpr double ACCEL_RPM_PER_SEC = 5.0;
-  static constexpr double VEL_LIM_RPM = 0.5;
-  static constexpr int    JOG_STEP_CNTS = 200;     // start larger than 10 for testing
+
+  // Make these conservative for a rigid coupler + bearing load
+  static constexpr double ACCEL_RPM_PER_SEC = 3.0;  // gentler than 5.0
+  static constexpr double VEL_LIM_RPM       = 0.35; // gentler than 0.5
+
+  // Jog segment behavior
+  static constexpr int    JOG_STEP_MIN_CNTS = 80;   // start small
+  static constexpr int    JOG_STEP_MAX_CNTS = 250;  // cap
+  static constexpr int    JOG_STEP_RAMP_PER_TICK = 10;
+
   static constexpr int    ENABLE_TIMEOUT_MS = 10000;
 
-  static constexpr int    TICK_MS = 50;
+  // Loop and filtering
+  static constexpr int    TICK_MS  = 50;
   static constexpr double DEADZONE = 0.05;
 
+  // Direction-change hold (prevents hard reversals)
+  static constexpr double REVERSE_HOLD_SEC = 1.0;
+
+  // Duty-cycle limiting (RMS protection while key is held)
+  // run for RUN_SEC, then rest for REST_SEC (repeat while cmd held)
+  static constexpr double RUN_SEC  = 1.0;
+  static constexpr double REST_SEC = 0.6;
+
+  // Overload cooldown
+  static constexpr double RMS_COOLDOWN_SEC = 6.0;
+
+  // -------- State --------
   double cmd_{0.0};
   bool move_in_flight_{false};
 
-  // Throttled diagnostic timestamp
+  int last_dir_{0};
+
+  int jog_step_current_{JOG_STEP_MIN_CNTS};
+
+  // timers
   rclcpp::Time last_diag_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time hold_until_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time rms_cooldown_until_{0, 0, RCL_ROS_TIME};
+
+  // duty-cycle phase
+  bool run_phase_{true};
+  rclcpp::Time phase_until_{0, 0, RCL_ROS_TIME};
 
 private:
   void init_teknic() {
@@ -121,8 +157,9 @@ private:
     node_->Motion.AccLimit = ACCEL_RPM_PER_SEC;
     node_->Motion.VelLimit = VEL_LIM_RPM;
 
-    RCLCPP_INFO(get_logger(), "Enabled. AccLimit=%.1f RPM/s VelLimit=%.1f RPM",
-                ACCEL_RPM_PER_SEC, VEL_LIM_RPM);
+    RCLCPP_INFO(get_logger(),
+      "Enabled. AccLimit=%.2f RPM/s VelLimit=%.2f RPM",
+      ACCEL_RPM_PER_SEC, VEL_LIM_RPM);
   }
 
   void speed_callback(const std_msgs::msg::Float32::SharedPtr msg) {
@@ -130,40 +167,48 @@ private:
     cmd_ = msg->data;
   }
 
-  // Print whatever alert info is available without relying on version-specific bitfields
-  void print_diagnostics_locked(const char* context) {
-    // throttle to 2 Hz
+  void print_diag_throttled_locked(const char* context, const std::string& alert_str) {
     auto now = this->get_clock()->now();
     if ((now - last_diag_time_).seconds() < 0.5) return;
     last_diag_time_ = now;
 
-    bool ready = node_->Motion.IsReady();
-    bool bus_loss = IsBusPowerLow(*node_);
-
-    // Alerts.Value() is known to exist from your earlier attempts.
-    // We’ll print the raw bits as hex. The type varies; cast through uint32_t/uint64_t conservatively.
-    auto alerts = node_->Status.Alerts.Value();
-    std::string alert_str = AlertsToString(alerts);
-
-    RCLCPP_ERROR(this->get_logger(),
-        "[%s] ready=%d bus_loss=%d alerts=\"%s\"",
-        context,
-        ready ? 1 : 0,
-        bus_loss ? 1 : 0,
-        alert_str.c_str());
+    RCLCPP_WARN(get_logger(),
+      "[%s] ready=%d bus_loss=%d alerts=\"%s\"",
+      context,
+      node_->Motion.IsReady() ? 1 : 0,
+      IsBusPowerLow(*node_) ? 1 : 0,
+      alert_str.c_str());
   }
 
   bool ensure_ready_locked() {
     if (IsBusPowerLow(*node_)) {
-      print_diagnostics_locked("bus_power_low");
+      auto s = AlertsToString(node_->Status.Alerts.Value());
+      print_diag_throttled_locked("bus_power_low", s);
       return false;
     }
 
     if (node_->Motion.IsReady()) return true;
 
-    print_diagnostics_locked("not_ready_pre_recover");
+    auto s = AlertsToString(node_->Status.Alerts.Value());
+    print_diag_throttled_locked("not_ready", s);
 
-    // Try recovery (safe calls per your example)
+    // If we're in RMS overload shutdown, DON'T thrash the enable line.
+    if (s.find("RMSOverloadShutdown") != std::string::npos) {
+      rms_cooldown_until_ = this->get_clock()->now() +
+                            rclcpp::Duration::from_seconds(RMS_COOLDOWN_SEC);
+      // stop commanding
+      cmd_ = 0.0;
+      jog_step_current_ = JOG_STEP_MIN_CNTS;
+      run_phase_ = true;
+      phase_until_ = this->get_clock()->now() + rclcpp::Duration::from_seconds(RUN_SEC);
+
+      RCLCPP_ERROR(get_logger(),
+        "RMSOverloadShutdown detected. Cooling down %.1fs. Reduce load/misalignment.",
+        RMS_COOLDOWN_SEC);
+      return false;
+    }
+
+    // Attempt recovery for other faults
     node_->Status.AlertsClear();
     node_->Motion.NodeStopClear();
     node_->EnableReq(true);
@@ -174,41 +219,105 @@ private:
     }
 
     if (!node_->Motion.IsReady()) {
-      print_diagnostics_locked("not_ready_post_recover");
+      auto s2 = AlertsToString(node_->Status.Alerts.Value());
+      print_diag_throttled_locked("not_ready_post_recover", s2);
       return false;
     }
 
     return true;
   }
 
+  void update_direction_holds_locked(int dir) {
+    auto now = this->get_clock()->now();
+
+    // On direction change, hold (coast/rest) and restart ramp/duty-cycle.
+    if (last_dir_ != 0 && dir != last_dir_) {
+      hold_until_ = now + rclcpp::Duration::from_seconds(REVERSE_HOLD_SEC);
+
+      jog_step_current_ = JOG_STEP_MIN_CNTS;
+
+      // restart duty-cycle (rest first is often gentler)
+      run_phase_ = false;
+      phase_until_ = now + rclcpp::Duration::from_seconds(REST_SEC);
+
+      RCLCPP_INFO(get_logger(), "Direction change: holding %.2fs before reversing", REVERSE_HOLD_SEC);
+    }
+
+    last_dir_ = dir;
+  }
+
+  void update_duty_cycle_locked() {
+    auto now = this->get_clock()->now();
+    if (phase_until_.nanoseconds() == 0) {
+      // initialize
+      run_phase_ = true;
+      phase_until_ = now + rclcpp::Duration::from_seconds(RUN_SEC);
+      return;
+    }
+
+    if (now < phase_until_) return;
+
+    // toggle
+    run_phase_ = !run_phase_;
+    phase_until_ = now + rclcpp::Duration::from_seconds(run_phase_ ? RUN_SEC : REST_SEC);
+  }
+
   void tick() {
     std::lock_guard<std::mutex> lk(mtx_);
     if (!node_) return;
 
-    // Update in-flight state
+    auto now = this->get_clock()->now();
+
+    // Global cooldown after RMSOverloadShutdown
+    if (now < rms_cooldown_until_) {
+      return;
+    }
+
+    // If a move is still executing, wait
     if (move_in_flight_) {
       if (!node_->Motion.MoveIsDone()) return;
       move_in_flight_ = false;
     }
 
-    // Stop = don't start new segments
-    if (std::fabs(cmd_) < DEADZONE) return;
+    // Stop = don't start new segments; also reset ramp and duty-cycle
+    if (std::fabs(cmd_) < DEADZONE) {
+      jog_step_current_ = JOG_STEP_MIN_CNTS;
+      last_dir_ = 0;
+      // reset duty-cycle
+      run_phase_ = true;
+      phase_until_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+      return;
+    }
+
+    int dir = (cmd_ > 0.0) ? +1 : -1;
+
+    // Apply direction-change hold logic
+    update_direction_holds_locked(dir);
+    if (now < hold_until_) return;
+
+    // Duty-cycle limiting to control RMS heating
+    update_duty_cycle_locked();
+    if (!run_phase_) return;
 
     // Must be ready before issuing motion
     if (!ensure_ready_locked()) return;
 
-    int dir = (cmd_ > 0.0) ? +1 : -1;
-    int delta = dir * JOG_STEP_CNTS;
+    // Ramp step size up slowly to reduce torque spikes
+    jog_step_current_ = std::min(jog_step_current_ + JOG_STEP_RAMP_PER_TICK, JOG_STEP_MAX_CNTS);
+
+    int delta = dir * jog_step_current_;
 
     try {
       node_->Motion.MoveWentDone();
       node_->Motion.MovePosnStart(delta);
       move_in_flight_ = true;
-    } catch (const mnErr &e) {
-      // If motion call fails, print diagnostics once and stop issuing segments
-      print_diagnostics_locked("MovePosnStart_mnErr");
-      cmd_ = 0.0; // soft stop on error
-      throw;      // let main print full mnErr too
+    } catch (const mnErr &) {
+      // Let main print full mnErr, but don't keep slamming the motor
+      auto s = AlertsToString(node_->Status.Alerts.Value());
+      print_diag_throttled_locked("MovePosnStart_mnErr", s);
+      cmd_ = 0.0;
+      jog_step_current_ = JOG_STEP_MIN_CNTS;
+      throw;
     }
   }
 
